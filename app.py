@@ -1,7 +1,9 @@
 import streamlit as st
 from itsdangerous import URLSafeSerializer, BadSignature
 import os
+from dotenv import load_dotenv
 from streamlit.components.v1 import html, iframe as components_iframe
+load_dotenv()  
 
 # Настройка сериализатора
 token_key = os.getenv("FNS_TOKEN") 
@@ -27,7 +29,7 @@ html("""
 # 2) Встраиваем сам iframe без key-параметра (он не поддерживается)
 components_iframe(
     src="https://ai5.space",
-    height=600,
+    height=60,
     scrolling=True
 )
 
