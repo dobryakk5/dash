@@ -1,48 +1,55 @@
 import streamlit as st
+import pandas as pd
 from itsdangerous import URLSafeSerializer, BadSignature
 import os
 from dotenv import load_dotenv
+from sqlalchemy import create_engine, text
 from streamlit.components.v1 import html, iframe as components_iframe
-load_dotenv()  
 
-# Настройка сериализатора
-token_key = os.getenv("FNS_TOKEN") 
+# Load environment variables
+load_dotenv()
+
+# Database connection
+# Ensure you have DB_URL defined in .env or Streamlit secrets
+DB_URL = os.getenv("DB_URL")
+if not DB_URL:
+    st.error("Не найдена переменная DB_URL: задайте строку подключения к базе данных")
+    st.stop()
+engine = create_engine(DB_URL, echo=False)
+
+# Настройка сериализатора (iframe auth)
+token_key = os.getenv("FNS_TOKEN")
 if not token_key:
     st.error("Не удалось получить FNS_TOKEN: задайте переменную окружения или добавьте в secrets.toml")
     st.stop()
-
 serializer = URLSafeSerializer(token_key, salt="uid-salt")
 
-# 1) Встраиваем скрипт для приёма токена из дочернего окна
+# 1) Приём токена из дочернего окна через JS
 html("""
 <script>
   window.addEventListener('message', e => {
     const token = e.data;
-    // сохраняем токен в родительском окне
     parent.window.authToken = token;
-    // сразу же шлём сообщение назад, чтобы Streamlit мог его поймать
     parent.postMessage({ auth: token }, "*");
   }, false);
 </script>
 """, height=0)
 
-# 2) Встраиваем сам iframe без key-параметра (он не поддерживается)
-components_iframe(
-    src="https://ai5.space",
-    height=60,
-    scrolling=True
-)
+# 2) Встраиваем iframe для логина
+def show_login_iframe():
+    components_iframe(src="https://ai5.space", height=60, scrolling=True)
 
-# 3) Ждём сообщения от iframe — оно попадёт в query-параметр ?auth=...
+show_login_iframe()
+
+# 3) Получаем токен из query params или сессии
 query_params = st.experimental_get_query_params()
 token = query_params.get("auth", [None])[0] or st.session_state.get("auth_token")
 
-# 4) Если токена ещё нет, пробуем его подхватить через JS
+# 4) Если токена нет, пытаемся через JS-глобальную переменную или останавливаем
 if not token:
-    # st_javascript — если вы используете сторонний компонент для выполнения JS-кода
     try:
         from streamlit_javascript import st_javascript
-        token_js = st_javascript("window.authToken")  # берём токен из глобальной переменной
+        token_js = st_javascript("window.authToken")
     except ImportError:
         token_js = None
 
@@ -53,33 +60,32 @@ if not token:
         st.info("Пожалуйста, выполните логин в iframe выше.")
         st.stop()
 
-# 5) Десериализуем токен и показываем результат
+# 5) Десериализуем токен и выводим приветствие
 try:
-    uid = serializer.loads(token)
-    st.success(f"Logged in as user: {uid}")
+    uid_iframe = serializer.loads(token)
+    st.success(f"Добро пожаловать, iframe user_id = {uid_iframe}")
 except BadSignature:
     st.error("Некорректный или просроченный токен")
+    st.stop()
 
+# === Основная логика приложения ===
 
-
-# ─── 5) Токен и uid валидны — дальше ваша логика ──────────────────────────────────
-st.write("Добро пожаловать, user_id =", uid)
-# …здесь ваши запросы в базу, выдача таблиц и т.д.
-
-# 1. Режим разработки vs. продакшн
-DEV_MODE = st.sidebar.checkbox("DEV_MODE (без авторизации)", value=False)
+# DEV MODE переключатель (без авторизации Telegram)
+DEV_MODE = st.sidebar.checkbox("DEV_MODE (без авторизации Telegram)", value=False)
 
 if DEV_MODE:
-    # — Без логина: берём user_id из сайдбара
-    uid = st.sidebar.text_input("Введите user_id для теста", value="7852511755")
+    uid = st.sidebar.text_input("Введите user_id для теста", value=str(uid_iframe))
     if not uid:
-        st.warning("Введите user_id")
+        st.warning("Введите user_id в режиме DEV_MODE")
         st.stop()
-    st.info(f"🔧 Режим DEV: показываем данные для user_id = {uid}")
+    st.info(f"🔧 Режим DEV: используем user_id = {uid}")
 else:
-    # — Telegram Login
+    # Telegram Login
     from streamlit_telegram_login import TelegramLoginWidgetComponent
     API_TOKEN = os.getenv("API_TOKEN")
+    if not API_TOKEN:
+        st.error("Не найдена переменная API_TOKEN для Telegram Login")
+        st.stop()
     telegram_login = TelegramLoginWidgetComponent(
         bot_username="fin_a_bot",
         secret_key=API_TOKEN
@@ -91,12 +97,7 @@ else:
     uid = user_info["id"]
     st.success(f"Вы авторизованы как Telegram ID: {uid}")
 
-# 2. Загрузка данных для user_id
-#
-# Чтобы избежать ошибок синтаксиса в psycopg2, используем SQLAlchemy.text + плейсхолдеры :uid.
-# Это наиболее надёжный способ: драйвер сам переводит плейсхолдер в правильный формат.
-# Производительность при этом не отличается от прямого pyformat, но надёжность и читаемость выше.
-
+# Загрузка данных из базы для текущего user_id
 df = pd.read_sql(
     text("SELECT * FROM purchases WHERE user_id = :uid"),
     engine,
@@ -106,15 +107,13 @@ df = pd.read_sql(
 st.write("📋 **Ваши покупки**")
 edited = st.data_editor(df, use_container_width=True)
 
-# 3. Сохранение изменений
+# Сохранение изменений при клике
 if st.button("💾 Сохранить изменения"):
     with engine.begin() as conn:
-        # сначала удаляем старые записи этого пользователя
         conn.execute(
             text("DELETE FROM purchases WHERE user_id = :uid"),
             {"uid": uid}
         )
-    # затем вставляем новые строки из edited
     edited["user_id"] = uid
     edited.to_sql("purchases", engine, if_exists="append", index=False)
     st.success("✅ Изменения сохранены")
