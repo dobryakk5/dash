@@ -4,15 +4,21 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 from itsdangerous import URLSafeSerializer, BadSignature
+from streamlit_javascript import st_javascript
+from urllib.parse import parse_qs, urlparse
 
 load_dotenv()
 engine = create_engine(os.getenv("DATABASE_URL"))
 
-
 serializer = URLSafeSerializer(os.getenv("FNS_TOKEN"), salt="uid-salt")
-query_params = st.query_params
-token = query_params.get("auth", [None])[0]
-st.write("Полученный token:", token)
+
+# Получаем URL из браузера
+url = st_javascript("await fetch('').then(_ => window.parent.location.href)")
+
+# Парсим токен из URL
+if url:
+    params = parse_qs(urlparse(url).query)
+    token = params.get("auth", [None])[0]
 
 if not token:
     st.error("Неверная ссылка.")
