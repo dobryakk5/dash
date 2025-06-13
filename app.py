@@ -11,7 +11,7 @@ load_dotenv()
 
 # Database connection
 # Ensure you have DB_URL defined in .env or Streamlit secrets
-DB_URL = os.getenv("DB_URL")
+DB_URL = os.getenv("DATABASE_URL")
 if not DB_URL:
     st.error("Не найдена переменная DB_URL: задайте строку подключения к базе данных")
     st.stop()
