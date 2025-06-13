@@ -10,7 +10,7 @@ engine = create_engine(os.getenv("DATABASE_URL"))
 
 
 serializer = URLSafeSerializer(os.getenv("API_TOKEN"), salt="uid-salt")
-params = st.experimental_get_query_params()
+params = st.query_params()
 token = params.get("token", [None])[0]
 if not token:
     st.error("Неверная ссылка.")
@@ -21,7 +21,7 @@ try:
 except BadSignature:
     st.error("Просроченный или некорректный токен.")
     st.stop()
-    
+
 # 1. Режим разработки vs. продакшн
 DEV_MODE = st.sidebar.checkbox("DEV_MODE (без авторизации)", value=False)
 
