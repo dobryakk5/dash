@@ -1,49 +1,42 @@
-import os
 import streamlit as st
 from itsdangerous import URLSafeSerializer, BadSignature
-from streamlit_javascript import st_javascript
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs
+from streamlit.components.v1 import html, iframe
 
-# ─── 0) Настройка ────────────────────────────────────────────────────────────────
 serializer = URLSafeSerializer(os.getenv("FNS_TOKEN"), salt="uid-salt")
 
-# ─── 1) Инициализация session_state ─────────────────────────────────────────────
-if "auth_token" not in st.session_state:
-    st.session_state.auth_token = None
+# 1) Встраиваем iframe с логином
+html("""
+<script>
+  window.addEventListener('message', e => {
+    const token = e.data;
+    parent.window.authToken = token;
+    // опционально: автоматически перезагрузить родителя
+    if (window.parent) window.parent.postMessage(token, '*');
+  }, false);
+</script>
+""")
 
-# ─── 2) Если токена ещё нет, получаем его через JS и сразу же перезапускаем скрипт ──
-if not st.session_state.auth_token:
-    # собираем полный URL родителя
-    parent_url = st_javascript(
-        "await fetch('').then(_ => window.parent.location.href)",
-        key="js_url"
-    )
-    if parent_url:
-        # достаём из него auth-параметр
-        params = parse_qs(urlparse(parent_url).query)
-        auth = params.get("auth", [None])[0]
-        if auth:
-            st.session_state.auth_token = auth
-            # перезапускаем весь скрипт, чтобы дальше он пошёл с session_state.auth_token
-            st.experimental_rerun()
-    # если parent_url ещё не пришёл или в нём нет auth — показываем спиннер и жмём Stop
-    st.spinner("Ждём токен…")
+iframe("RemoteAuthPageURL", key="auth_frame")
+
+# 2) После iframe — JS-таймер для чтения token
+token = st_js = st.experimental_get_query_params().get("auth", [None])[0] if False else None
+token = st_js or st.session_state.get("auth_token")
+
+if not token:
+    token_js = st_javascript("parent.window.authToken", key="grab_token")
+    if token_js:
+        st.session_state.auth_token = token_js
+        st.experimental_rerun()
     st.stop()
 
-# ─── 3) У нас в session_state.auth_token уже есть значение ────────────────────────
-token = st.session_state.auth_token
-st.write("Используемый токен:", token)
-
-# ─── 4) Десериализуем и получаем uid ──────────────────────────────────────────────
+# 3) Десериализация
 try:
-    uid = serializer.loads(token)
-    st.success(f"Десериализовали uid: {uid}")
+    uid = serializer.loads(st.session_state.auth_token)
+    st.success(f"Logged in as user: {uid}")
 except BadSignature:
-    st.error("Токен некорректен или просрочен.")
-    st.stop()
-except Exception as e:
-    st.error(f"При десериализации токена ошибка: {e}")
-    st.stop()
+    st.error("Некорректный или просроченный токен")
+
 
 # ─── 5) Токен и uid валидны — дальше ваша логика ──────────────────────────────────
 st.write("Добро пожаловать, user_id =", uid)
