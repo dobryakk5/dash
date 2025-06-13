@@ -10,9 +10,10 @@ engine = create_engine(os.getenv("DATABASE_URL"))
 
 
 serializer = URLSafeSerializer(os.getenv("FNS_TOKEN"), salt="uid-salt")
-token = st.query_params.get("token", [None])[0]
-# 🧪 Распечатаем токен для отладки
-st.write("📝 Полученный token:", token)
+query_params = st.query_params
+token = query_params.get("t", [None])[0]
+st.write("Полученный token:", token)
+
 if not token:
     st.error("Неверная ссылка.")
     st.stop()
