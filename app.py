@@ -23,7 +23,6 @@ token = st_javascript(
     "await fetch('').then(_ => parent.window.token)",
     key="js_token"
 )
-st.write("Raw JS token:", token)  # для отладки
 
 # 3. Если в URL есть параметр auth — парсим и перезаписываем token
 if url:
@@ -38,11 +37,18 @@ if not token:
     st.warning("Токен не найден ни в JS, ни в параметрах URL.")
     st.stop()
 
+st.write("Raw token:", repr(token))
+st.write("Token length:", len(token))
 st.write("Используемый токен:", token)
+
 try:
     uid = serializer.loads(token)
-except BadSignature:
-    st.error("Просроченный или некорректный токен.")
+    st.success(f"Десериализовали uid: {uid!r}")
+except BadSignature as e:
+    st.error(f"BadSignature — токен некорректен или просрочен: {e}")
+    st.stop()
+except Exception as e:
+    st.error(f"Ошибка при десериализации токена: {e}")
     st.stop()
 
 # Дальнейшая логика работы с uid...
