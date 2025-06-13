@@ -10,8 +10,7 @@ engine = create_engine(os.getenv("DATABASE_URL"))
 
 
 serializer = URLSafeSerializer(os.getenv("API_TOKEN"), salt="uid-salt")
-params = st.query_params()
-token = params.get("token", [None])[0]
+token = st.query_params.get("token", [None])[0]
 if not token:
     st.error("Неверная ссылка.")
     st.stop()
