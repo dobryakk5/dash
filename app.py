@@ -1,4 +1,5 @@
 import os
+from urllib import request
 import streamlit as st
 import pandas as pd
 from sqlalchemy import create_engine, text
@@ -11,6 +12,8 @@ engine = create_engine(os.getenv("DATABASE_URL"))
 
 serializer = URLSafeSerializer(os.getenv("FNS_TOKEN"), salt="uid-salt")
 token = st.query_params.get("token", [None])[0]
+# 🧪 Распечатаем токен для отладки
+st.write("📝 Полученный token:", token)
 if not token:
     st.error("Неверная ссылка.")
     st.stop()
