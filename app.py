@@ -4,7 +4,12 @@ import os
 from streamlit.components.v1 import html, iframe as components_iframe
 
 # Настройка сериализатора
-serializer = URLSafeSerializer(os.getenv("FNS_TOKEN"), salt="uid-salt")
+token_key = os.getenv("FNS_TOKEN") 
+if not token_key:
+    st.error("Не удалось получить FNS_TOKEN: задайте переменную окружения или добавьте в secrets.toml")
+    st.stop()
+
+serializer = URLSafeSerializer(token_key, salt="uid-salt")
 
 # 1) Встраиваем скрипт для приёма токена из дочернего окна
 html("""
