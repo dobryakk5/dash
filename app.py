@@ -1,56 +1,53 @@
 import os
 import streamlit as st
-import pandas as pd
-from sqlalchemy import create_engine, text
-from dotenv import load_dotenv
 from itsdangerous import URLSafeSerializer, BadSignature
 from streamlit_javascript import st_javascript
 from urllib.parse import parse_qs, urlparse
 
-load_dotenv()
-engine = create_engine(os.getenv("DATABASE_URL"))
+# ─── 0) Настройка ────────────────────────────────────────────────────────────────
 serializer = URLSafeSerializer(os.getenv("FNS_TOKEN"), salt="uid-salt")
 
-# 1. Получаем URL из браузера (ключ — "js_url")
-url = st_javascript(
-    "await fetch('').then(_ => window.parent.location.href)",
-    key="js_url"
-)
-st.write("URL:", url)  # для отладки
+# ─── 1) Инициализация session_state ─────────────────────────────────────────────
+if "auth_token" not in st.session_state:
+    st.session_state.auth_token = None
 
-# 2. Получаем токен из parent.window.token (ключ — "js_token")
-token = st_javascript(
-    "await fetch('').then(_ => parent.window.token)",
-    key="js_token"
-)
-
-# 3. Если в URL есть параметр auth — парсим и перезаписываем token
-if url:
-    qs = urlparse(url).query
-    params = parse_qs(qs)
-    auth_token = params.get("auth", [None])[0]
-    if auth_token:
-        token = auth_token
-
-# 4. Проверяем и используем токен
-if not token:
-    st.warning("Токен не найден ни в JS, ни в параметрах URL.")
+# ─── 2) Если токена ещё нет, получаем его через JS и сразу же перезапускаем скрипт ──
+if not st.session_state.auth_token:
+    # собираем полный URL родителя
+    parent_url = st_javascript(
+        "await fetch('').then(_ => window.parent.location.href)",
+        key="js_url"
+    )
+    if parent_url:
+        # достаём из него auth-параметр
+        params = parse_qs(urlparse(parent_url).query)
+        auth = params.get("auth", [None])[0]
+        if auth:
+            st.session_state.auth_token = auth
+            # перезапускаем весь скрипт, чтобы дальше он пошёл с session_state.auth_token
+            st.experimental_rerun()
+    # если parent_url ещё не пришёл или в нём нет auth — показываем спиннер и жмём Stop
+    st.spinner("Ждём токен…")
     st.stop()
 
+# ─── 3) У нас в session_state.auth_token уже есть значение ────────────────────────
+token = st.session_state.auth_token
 st.write("Используемый токен:", token)
 
+# ─── 4) Десериализуем и получаем uid ──────────────────────────────────────────────
 try:
     uid = serializer.loads(token)
-    st.success(f"Десериализовали uid: {uid!r}")
-except BadSignature as e:
-    st.error(f"BadSignature — токен некорректен или просрочен: {e}")
+    st.success(f"Десериализовали uid: {uid}")
+except BadSignature:
+    st.error("Токен некорректен или просрочен.")
     st.stop()
 except Exception as e:
-    st.error(f"Ошибка при десериализации токена: {e}")
+    st.error(f"При десериализации токена ошибка: {e}")
     st.stop()
 
-# Дальнейшая логика работы с uid...
-
+# ─── 5) Токен и uid валидны — дальше ваша логика ──────────────────────────────────
+st.write("Добро пожаловать, user_id =", uid)
+# …здесь ваши запросы в базу, выдача таблиц и т.д.
 
 # 1. Режим разработки vs. продакшн
 DEV_MODE = st.sidebar.checkbox("DEV_MODE (без авторизации)", value=False)
