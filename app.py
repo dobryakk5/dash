@@ -1,41 +1,58 @@
 import streamlit as st
 from itsdangerous import URLSafeSerializer, BadSignature
-from urllib.parse import parse_qs
-from streamlit.components.v1 import html, iframe
+import os
+from streamlit.components.v1 import html, iframe as components_iframe
 
+# Настройка сериализатора
 serializer = URLSafeSerializer(os.getenv("FNS_TOKEN"), salt="uid-salt")
 
-# 1) Встраиваем iframe с логином
+# 1) Встраиваем скрипт для приёма токена из дочернего окна
 html("""
 <script>
   window.addEventListener('message', e => {
     const token = e.data;
+    // сохраняем токен в родительском окне
     parent.window.authToken = token;
-    // опционально: автоматически перезагрузить родителя
-    if (window.parent) window.parent.postMessage(token, '*');
+    // сразу же шлём сообщение назад, чтобы Streamlit мог его поймать
+    parent.postMessage({ auth: token }, "*");
   }, false);
 </script>
-""")
+""", height=0)
 
-iframe("RemoteAuthPageURL", key="auth_frame")
+# 2) Встраиваем сам iframe без key-параметра (он не поддерживается)
+components_iframe(
+    src="https://ai5.space",
+    height=600,
+    scrolling=True
+)
 
-# 2) После iframe — JS-таймер для чтения token
-token = st_js = st.experimental_get_query_params().get("auth", [None])[0] if False else None
-token = st_js or st.session_state.get("auth_token")
+# 3) Ждём сообщения от iframe — оно попадёт в query-параметр ?auth=...
+query_params = st.experimental_get_query_params()
+token = query_params.get("auth", [None])[0] or st.session_state.get("auth_token")
 
+# 4) Если токена ещё нет, пробуем его подхватить через JS
 if not token:
-    token_js = st_javascript("parent.window.authToken", key="grab_token")
+    # st_javascript — если вы используете сторонний компонент для выполнения JS-кода
+    try:
+        from streamlit_javascript import st_javascript
+        token_js = st_javascript("window.authToken")  # берём токен из глобальной переменной
+    except ImportError:
+        token_js = None
+
     if token_js:
         st.session_state.auth_token = token_js
         st.experimental_rerun()
-    st.stop()
+    else:
+        st.info("Пожалуйста, выполните логин в iframe выше.")
+        st.stop()
 
-# 3) Десериализация
+# 5) Десериализуем токен и показываем результат
 try:
-    uid = serializer.loads(st.session_state.auth_token)
+    uid = serializer.loads(token)
     st.success(f"Logged in as user: {uid}")
 except BadSignature:
     st.error("Некорректный или просроченный токен")
+
 
 
 # ─── 5) Токен и uid валидны — дальше ваша логика ──────────────────────────────────
