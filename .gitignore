@@ -1,0 +1,4 @@
+/denv
+.env*
+/__pycache__
+/logs
