@@ -11,7 +11,7 @@ engine = create_engine(os.getenv("DATABASE_URL"))
 
 serializer = URLSafeSerializer(os.getenv("FNS_TOKEN"), salt="uid-salt")
 query_params = st.query_params
-token = query_params.get("t", [None])[0]
+token = query_params.get("auth", [None])[0]
 st.write("Полученный token:", token)
 
 if not token:
