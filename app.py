@@ -37,8 +37,6 @@ if not token:
     st.warning("Токен не найден ни в JS, ни в параметрах URL.")
     st.stop()
 
-st.write("Raw token:", repr(token))
-st.write("Token length:", len(token))
 st.write("Используемый токен:", token)
 
 try:
