@@ -3,12 +3,27 @@ import streamlit as st
 import pandas as pd
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
+from itsdangerous import URLSafeSerializer, BadSignature
 
 load_dotenv()
 engine = create_engine(os.getenv("DATABASE_URL"))
 
+
+serializer = URLSafeSerializer(os.getenv("API_TOKEN"), salt="uid-salt")
+params = st.experimental_get_query_params()
+token = params.get("token", [None])[0]
+if not token:
+    st.error("Неверная ссылка.")
+    st.stop()
+
+try:
+    uid = serializer.loads(token)
+except BadSignature:
+    st.error("Просроченный или некорректный токен.")
+    st.stop()
+    
 # 1. Режим разработки vs. продакшн
-DEV_MODE = st.sidebar.checkbox("DEV_MODE (без авторизации)", value=True)
+DEV_MODE = st.sidebar.checkbox("DEV_MODE (без авторизации)", value=False)
 
 if DEV_MODE:
     # — Без логина: берём user_id из сайдбара
@@ -22,7 +37,7 @@ else:
     from streamlit_telegram_login import TelegramLoginWidgetComponent
     API_TOKEN = os.getenv("API_TOKEN")
     telegram_login = TelegramLoginWidgetComponent(
-        bot_username="myagent555_bot",
+        bot_username="fin_a_bot",
         secret_key=API_TOKEN
     )
     user_info = telegram_login.button
