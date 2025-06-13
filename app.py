@@ -9,7 +9,7 @@ load_dotenv()
 engine = create_engine(os.getenv("DATABASE_URL"))
 
 
-serializer = URLSafeSerializer(os.getenv("API_TOKEN"), salt="uid-salt")
+serializer = URLSafeSerializer(os.getenv("FNS_TOKEN"), salt="uid-salt")
 token = st.query_params.get("token", [None])[0]
 if not token:
     st.error("Неверная ссылка.")
