@@ -1,5 +1,4 @@
 import os
-from urllib import request
 import streamlit as st
 import pandas as pd
 from sqlalchemy import create_engine, text
