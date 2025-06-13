@@ -9,26 +9,44 @@ from urllib.parse import parse_qs, urlparse
 
 load_dotenv()
 engine = create_engine(os.getenv("DATABASE_URL"))
-
 serializer = URLSafeSerializer(os.getenv("FNS_TOKEN"), salt="uid-salt")
 
-# Получаем URL из браузера
-url = st_javascript("await fetch('').then(_ => window.parent.location.href)")
+# 1. Получаем URL из браузера (ключ — "js_url")
+url = st_javascript(
+    "await fetch('').then(_ => window.parent.location.href)",
+    key="js_url"
+)
+st.write("URL:", url)  # для отладки
 
-# Парсим токен из URL
+# 2. Получаем токен из parent.window.token (ключ — "js_token")
+token = st_javascript(
+    "await fetch('').then(_ => parent.window.token)",
+    key="js_token"
+)
+st.write("Raw JS token:", token)  # для отладки
+
+# 3. Если в URL есть параметр auth — парсим и перезаписываем token
 if url:
-    params = parse_qs(urlparse(url).query)
-    token = params.get("auth", [None])[0]
+    qs = urlparse(url).query
+    params = parse_qs(qs)
+    auth_token = params.get("auth", [None])[0]
+    if auth_token:
+        token = auth_token
 
+# 4. Проверяем и используем токен
 if not token:
-    st.error("Неверная ссылка.")
+    st.warning("Токен не найден ни в JS, ни в параметрах URL.")
     st.stop()
 
+st.write("Используемый токен:", token)
 try:
     uid = serializer.loads(token)
 except BadSignature:
     st.error("Просроченный или некорректный токен.")
     st.stop()
+
+# Дальнейшая логика работы с uid...
+
 
 # 1. Режим разработки vs. продакшн
 DEV_MODE = st.sidebar.checkbox("DEV_MODE (без авторизации)", value=False)
