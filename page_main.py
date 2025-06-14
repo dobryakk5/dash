@@ -8,15 +8,8 @@ from sqlalchemy import create_engine, text
 import locale
 import warnings
 import logging
-#import page_main, page_detail
+import page_main, page_detail
 
-#main = st.Page(page_main.app, title="Главная")
-#detail = st.Page(page_detail.app, title="Детальная", icon="🔍")
-#current = st.navigation([main, detail])
-#current.run()
-
-
-load_dotenv()
 
 # Убираем меню, хедер и футер через CSS
 st.markdown(
@@ -58,52 +51,13 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ─── 0.1. Скрываем Deprecation-warnings от Streamlit в консоли ─────────────────────
-#warnings.filterwarnings("ignore", message=r"*query_params*",)
-logging.getLogger("streamlit").setLevel(logging.ERROR)
-
-
-serializer = URLSafeSerializer(os.getenv("FNS_TOKEN", ""), salt="uid-salt")
-
-html("""
-<script>
-  window.addEventListener('message', e => {
-    parent.window.authToken = e.data;
-    parent.postMessage({ auth: e.data }, "*");
-  }, false);
-</script>
-""", height=0)
-
-components_iframe(src="https://ai5.space", height=60, scrolling=True)
-
-query_params = st.experimental_get_query_params()
-token = query_params.get("auth", [None])[0] or st.session_state.get("auth_token")
-
-if not token:
-    try:
-        from streamlit_javascript import st_javascript
-        token_js = st_javascript("window.authToken")
-    except ImportError:
-        token_js = None
-
-    if token_js:
-        st.session_state.auth_token = token_js
-        st.experimental_rerun()
-    else:
-        st.info("Пожалуйста, выполните логин в iframe выше.")
-        st.stop()
-
-try:
-    uid = serializer.loads(token)
-except BadSignature:
-    st.error("Некорректный или просроченный токен")
-    st.stop()
-
-st.session_state["uid"] = uid
-#st.success(f"✅ Logged in as user: {uid}")
-
 # ─── Подключение к БД и локаль ────────────────────────────────────────────────
 engine = create_engine(os.getenv("DATABASE_URL"))
+
+if "uid" not in st.session_state:
+        st.error("UID не найден. Сначала перейдите на главную страницу.")
+uid = st.session_state["uid"]
+st.write("UID из session_state:", uid)
 
 try:
     locale.setlocale(locale.LC_TIME, 'ru_RU.UTF-8')
@@ -127,7 +81,7 @@ df = pd.read_sql(
 
 # Конвертация и локальное форматирование даты
 df['ts'] = pd.to_datetime(df['ts'], errors='coerce')
-df['Дата'] = df['ts'].dt.strftime('%d.%m.%Y')
+df['Дата'] = df['ts'].dt.strftime('%-d %B %Y')
 
 # Оставляем только видимые пользователю столбцы
 df = df[['id', 'category', 'subcategory', 'price', 'Дата']]
@@ -137,7 +91,7 @@ df.columns = ['id', 'Категория', 'Подкатегория', 'Цена'
 if 'orig_df' not in st.session_state:
     st.session_state.orig_df = df.copy()
 
-st.write("Отредактируйте любое поле и нажмите 📥 под таблицей")
+st.write("Отредактируйте любое поле и нажмите 💾 под таблицей")
 edited = st.data_editor(
     df.drop(columns=['id']),               # id скрываем, но он в orig_df
     use_container_width=True,
@@ -147,7 +101,7 @@ edited = st.data_editor(
 edited['id'] = st.session_state.orig_df['id']
 
 # ─── Сохранение изменений в БД (диффовый алгоритм) ───────────────────────────
-if st.button("📥 Сохранить изменения"):
+if st.button("💾 Сохранить изменения"):
     # Подготовка новых и оригинальных табличек
     new = edited.rename(columns={
         "Категория": "category",
@@ -219,3 +173,6 @@ if st.button("📥 Сохранить изменения"):
     st.success("✅ Изменения успешно применены в базе!")
     # Обновляем orig_df
     st.session_state.orig_df = edited.copy()
+
+if st.button("Перейти на детальную"):
+        st.switch_page("page_detail")

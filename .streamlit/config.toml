@@ -2,3 +2,5 @@
 showErrorDetails = false
 [ui]
 hideTopBar = true
+[logger]
+level = "warning"  # понижает уровень логирования, чтобы скрыть info-сообщения
